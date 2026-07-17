@@ -9,8 +9,8 @@ TARGET_LOCATION = "Ibeju-Lekki, Lagos"
 GEMINI_MODEL = "gemini-2.5-flash"
 MAX_RETRIES = 3
 
-# Initialize Gemini client
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+# Initialize Gemini client correctly
+# The new SDK automatically reads GEMINI_API_KEY from the environment natively
 client = genai.Client()
 
 # Supabase configuration
@@ -130,7 +130,7 @@ def upsert_report():
     payload = {
         "slug": slug,
         "location": TARGET_LOCATION,
-        "year": str(2024),
+        "year": "2026",
         "content": content,
         "marketing_linkedin": linkedin_ad,
         "marketing_whatsapp": whatsapp_text,
@@ -139,6 +139,7 @@ def upsert_report():
     
     headers = {
         "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "apikey": f"{SUPABASE_SERVICE_ROLE_KEY}",
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates",
     }
@@ -149,9 +150,11 @@ def upsert_report():
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
         print(f"Successfully upserted report for {TARGET_LOCATION}")
-        return response.json()
+        return response
     except requests.exceptions.RequestException as e:
         print(f"Error upserting report: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"Detailed Server Response: {e.response.text}")
         raise
 
 if __name__ == "__main__":
