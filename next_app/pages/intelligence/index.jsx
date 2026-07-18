@@ -9,8 +9,11 @@ export default function IntelligenceDashboard({ reports }) {
         {reports && reports.length > 0 ? (
           reports.map((report) => (
             <div key={report.id} style={styles.reportCard}>
-              <h2 style={styles.reportTitle}>{report.location}</h2>
-              <p style={styles.reportMeta}>Year: {report.year}</p>
+              {/* Fallback to location if location_name isn't populated */}
+              <h2 style={styles.reportTitle}>{report.location_name || report.location}</h2>
+              {report.year && <p style={styles.reportMeta}>Year: {report.year}</p>}
+              
+              {/* Dynamic slug route pointing to [slug].jsx preview */}
               <Link href={`/intelligence/${report.slug}`}>
                 <button style={styles.button}>Read Free Sample</button>
               </Link>
@@ -24,7 +27,8 @@ export default function IntelligenceDashboard({ reports }) {
   );
 }
 
-export async function getServerSideProps() {
+// FIXED: Switched from getServerSideProps to getStaticProps to support revalidate natively
+export async function getStaticProps() {
   try {
     const { data: reports, error } = await supabase
       .from('market_reports')
@@ -35,13 +39,13 @@ export async function getServerSideProps() {
 
     return {
       props: { reports: reports || [] },
-      revalidate: 60,
+      revalidate: 60, // Next.js will regenerate the page at most once every 60 seconds
     };
   } catch (err) {
     console.error('Error fetching reports:', err);
     return {
       props: { reports: [] },
-      revalidate: 10,
+      revalidate: 10, // Fast fallback tracking retry rule if connection drops
     };
   }
 }
