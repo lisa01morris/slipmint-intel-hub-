@@ -1,12 +1,5 @@
 {
   "framework": "nextjs",
   "buildCommand": "next build",
-  "outputDirectory": ".next",
-  "redirects": [
-    {
-      "source": "/",
-      "destination": "/intelligence",
-      "permanent": true
-    }
-  ]
+  "outputDirectory": ".next"
 }
