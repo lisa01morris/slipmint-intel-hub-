@@ -1,91 +1,56 @@
+// next_app/pages/intelligence/[slug].jsx
 import supabase from '../../lib/supabaseClient';
-import Link from 'next/link';
 
-export default function ReportDetail({ report }) {
-  if (!report) {
-    return (
-      <div style={styles.container}>
-        <p>Report not found.</p>
-        <Link href="/intelligence">
-          <button style={styles.backButton}>← Back to Directory</button>
-        </Link>
-      </div>
-    );
-  }
+export default function MarketProfile({ report }) {
+  if (!report) return <div>Loading...</div>;
 
   return (
-    <div style={styles.container}>
-      <Link href="/intelligence">
-        <button style={styles.backButton}>← Back to Directory</button>
-      </Link>
-      <div style={styles.reportContainer}>
-        <h1 style={styles.title}>{report.location}</h1>
-        <p style={styles.meta}>Year: {report.year}</p>
-        <div style={styles.content}>
-          {report.content}
-        </div>
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 20px', fontFamily: 'sans-serif' }}>
+      <h1>{report.location_name || report.location}</h1>
+      <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+        <h3>📊 Market Infographic Prompt Concept</h3>
+        <p>"{report.infographic_prompt}"</p>
+      </div>
+      
+      <div style={{ background: '#fff5f5', border: '2px dashed #ff4a4a', padding: '30px', textAlign: 'center' }}>
+        <h3 style={{ color: '#d32f2f' }}>🔒 Institutional Deep-Dive Gated Content</h3>
+        <a href={report.whop_checkout_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', padding: '10px 20px', backgroundColor: '#0066cc', color: '#fff', textDecoration: 'none', borderRadius: '6px', marginTop: '10px' }}>
+          Unlock Full Intelligence Report on Whop
+        </a>
       </div>
     </div>
   );
 }
 
-export async function getServerSideProps({ params }) {
+export async function getStaticPaths() {
   try {
-    const { data: report, error } = await supabase
-      .from('market_reports')
-      .select('*')
-      .eq('slug', params.slug)
-      .single();
+    const { data: reports, error } = await supabase
+      .from('reports') // ✅ Table target updated to match system schema
+      .select('slug');
 
-    if (error || !report) {
-      return { notFound: true };
-    }
+    const paths = reports ? reports.map((report) => ({
+      params: { slug: report.slug },
+    })) : [];
 
-    return {
-      props: { report },
-      revalidate: 60,
-    };
+    return { paths, fallback: 'blocking' };
   } catch (err) {
-    console.error('Error fetching report:', err);
-    return { notFound: true };
+    return { paths: [], fallback: 'blocking' };
   }
 }
 
-const styles = {
-  container: {
-    maxWidth: '900px',
-    margin: '0 auto',
-    padding: '40px 20px',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-  },
-  backButton: {
-    padding: '10px 16px',
-    marginBottom: '30px',
-    backgroundColor: '#f0f0f0',
-    border: '1px solid #ccc',
-    borderRadius: '6px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    color: '#333',
-  },
-  reportContainer: {
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: '32px',
-    fontWeight: '700',
-    marginBottom: '10px',
-    color: '#1a1a1a',
-  },
-  meta: {
-    fontSize: '14px',
-    color: '#666',
-    marginBottom: '30px',
-  },
-  content: {
-    fontSize: '16px',
-    lineHeight: '1.6',
-    color: '#333',
-    whiteSpace: 'pre-wrap',
-  },
-};
+export async function getStaticProps({ params }) {
+  try {
+    const { slug } = params;
+    const { data: report, error } = await supabase
+      .from('reports') // ✅ Table target updated to match system schema
+      .select('*')
+      .eq('slug', slug)
+      .single();
+
+    if (error || !report) return { notFound: true };
+
+    return { props: { report }, revalidate: 60 };
+  } catch (err) {
+    return { notFound: true };
+  }
+}
