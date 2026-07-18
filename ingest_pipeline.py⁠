@@ -1,9 +1,10 @@
 import os
 import json
+import sys
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-# Import the Supabase client
+# Import the official Supabase client
 from supabase import create_client, Client
 
 # Initialize the Gemini client (picks up GEMINI_API_KEY from environment)
@@ -13,6 +14,10 @@ client = genai.Client()
 SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
 # Use your master secret service role key here so the backend script can bypass RLS rules
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") 
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("❌ Error: Missing Supabase environment configuration variables.")
+    sys.exit(1)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -27,10 +32,10 @@ class MarketReport(BaseModel):
     infrastructure_mapping: str = Field(description="Status of local transit, utilities, and commercial pipelines.")
     infographic_prompt: str = Field(description="A highly detailed, style-centric prompt optimized for Imagen 3 to generate a market infographic.")
 
-class ValidationResult(BaseModel):
-    is_valid: bool = Field(description="True if the report passes institutional standards, false if it contains placeholders, hallucinations, or structural errors.")
+# FIXED: Flat structure prevents Gemini from getting confused with nested fields
+class AuditReport(BaseModel):
+    is_valid: bool = Field(description="True if the report passes institutional standards. False if it contains placeholders, hallucinations, or structural errors.")
     correction_feedback: str = Field(description="Detailed instructions on what needs to be fixed or rewritten. Leave blank if is_valid is True.")
-    corrected_report: MarketReport = Field(description="The final, corrected version of the market report if errors were found. If the original was perfect, mirror it here.")
 
 # =====================================================================
 # 2. PIPELINE EXECUTION
@@ -70,7 +75,6 @@ def execute_market_intelligence_pipeline(target_location: str) -> dict:
     CRITICAL AUDIT RULES:
     1. Check for hallucinations or generic placeholder text (e.g., 'insert data here', 'XYZ transit line'). 
     2. Ensure the infographic prompt is strictly visual, highly detailed, and optimized for an AI image generator (Imagen 3).
-    3. If any field fails institutional standards, mark is_valid as false, provide feedback, and regenerate the corrected data within the corrected_report field.
     
     DRAFT REPORT TO AUDIT:
     {json.dumps(initial_draft, indent=2)}
@@ -81,7 +85,7 @@ def execute_market_intelligence_pipeline(target_location: str) -> dict:
         contents=validation_prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=ValidationResult,
+            response_schema=AuditReport,
             temperature=0.1, 
         ),
     )
@@ -95,7 +99,27 @@ def execute_market_intelligence_pipeline(target_location: str) -> dict:
     else:
         print("⚠️ Validation failed. Applying automated corrections...")
         print(f"Feedback from Auditor: {audit_result['correction_feedback']}")
-        return audit_result["corrected_report"]
+        
+        correction_prompt = f"""
+        Regenerate and fix this real estate market intelligence report for {target_location}.
+        
+        CRITICAL FIX INSTRUCTIONS FROM AUDITOR:
+        {audit_result['correction_feedback']}
+        
+        ORIGINAL FAULTY DRAFT:
+        {json.dumps(initial_draft, indent=2)}
+        """
+        
+        fixed_response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=correction_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=MarketReport,
+                temperature=0.2,
+            ),
+        )
+        return json.loads(fixed_response.text)
 
 # =====================================================================
 # 3. RUN ENGINE & SUPABASE SYNC
@@ -107,24 +131,27 @@ if __name__ == "__main__":
     # Run the generation pipeline
     final_verified_data = execute_market_intelligence_pipeline(target)
     
-    # Create a quick clean URL slug (e.g., "ibeju-lekki-lagos-nigeria")
+    # Create a clean URL slug (e.g., "ibeju-lekki-lagos-nigeria")
     url_slug = target.lower().replace(", ", "-").replace(" ", "-")
     
-    # Build the database payload matching your Supabase columns
+    # Build the database payload matching your Supabase columns and Next.js frontend requirements
     db_payload = {
         "slug": url_slug,
         "location": final_verified_data["location"],
+        "location_name": final_verified_data["location"], # Backwards compatibility for frontend
         "market_deep_dive": final_verified_data["market_deep_dive"],
         "population_density_vector": final_verified_data["population_density_vector"],
         "infrastructure_mapping": final_verified_data["infrastructure_mapping"],
-        "infographic_prompt": final_verified_data["infographic_prompt"]
+        "infographic_prompt": final_verified_data["infographic_prompt"],
+        "whop_checkout_url": f"https://whop.com{url_slug}"
     }
     
     print("\n⚡ Pushing verified data directly to Supabase...")
     
     try:
-        # Upsert inserts the row, or updates it if the slug already exists
-        data, count = supabase.table("reports").upsert(db_payload).execute()
+        # FIXED: Targets the correct 'reports' table name matching index.jsx
+        data = supabase.table("reports").upsert(db_payload).execute()
         print(f"👑 Success! Your live dashboard node is updated at: /intelligence/{url_slug}")
     except Exception as e:
-        print(f"❌ Database Sync Failed: {e}")
+        print(f"❌ Failed to push data to Supabase: {e}")
+        sys.exit(1)
