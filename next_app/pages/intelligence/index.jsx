@@ -4,6 +4,16 @@ import Link from 'next/link';
 
 export default function IntelligenceDashboard({ reports }) {
   const [user, setUser] = useState(null);
+  const [isSignUp, setIsSignUp] = useState(false); // Toggle between Login and Sign Up
+  
+  // Custom Credentials Form State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // Chat Assistant State
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -11,12 +21,10 @@ export default function IntelligenceDashboard({ reports }) {
 
   // Track authentication status on load
   useEffect(() => {
-    // 1. Check current session status
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
 
-    // 2. Listen for real-time auth changes (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -24,19 +32,36 @@ export default function IntelligenceDashboard({ reports }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Google Login Handler
-  const handleGoogleLogin = async () => {
+  // Custom Password/Email-Based Credentials Authentication Handler
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          // Vercel handles the dynamic window mapping, or routes back to this path
-          redirectTo: typeof window !== 'undefined' ? window.location.origin + '/intelligence' : undefined,
-        }
-      });
-      if (error) throw error;
+      if (isSignUp) {
+        // Handle User Sign Up with custom metadata fields
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              phone: phone,
+            },
+          },
+        });
+        if (error) throw error;
+        alert('Signup successful! Check your email inbox for a validation link.');
+      } else {
+        // Handle User Login
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+      }
     } catch (err) {
-      console.error('Error logging in with Google:', err.message);
+      setAuthError(err.message);
     }
   };
 
@@ -48,10 +73,8 @@ export default function IntelligenceDashboard({ reports }) {
   // Handle chat submission
   const handleChatSubmit = async (e) => {
     e.preventDefault();
-    
     if (!inputValue.trim()) return;
 
-    // Add user message to chat
     const userMessage = { role: 'user', text: inputValue };
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
@@ -85,108 +108,168 @@ export default function IntelligenceDashboard({ reports }) {
 
   return (
     <div style={styles.container}>
-      {/* AUTHENTICATION BAR */}
-      <div style={styles.authBar}>
-        {user ? (
-          <div style={styles.userProfile}>
-            <span style={styles.userText}>Logged in as: <strong>{user.email}</strong></span>
-            <button onClick={handleLogout} style={styles.logoutButton}>Sign Out</button>
-          </div>
-        ) : (
-          <button onClick={handleGoogleLogin} style={styles.loginButton}>
-            🌐 Sign In with Google
-          </button>
-        )}
-      </div>
-
-      <h1 style={styles.title}>Intelligence Directory</h1>
-      
-      <div style={styles.listContainer}>
-        {reports && reports.length > 0 ? (
-          reports.map((report) => (
-            <div key={report.id} style={styles.reportCard}>
-              <h2 style={styles.reportTitle}>{report.location_name || report.location}</h2>
-              {report.year && <p style={styles.reportMeta}>Year: {report.year}</p>}
-              
-              <Link href={`/intelligence/${report.slug}`}>
-                <button style={styles.button}>Read Free Sample</button>
-              </Link>
+      {user ? (
+        /* ================= AUTHENTICATED EXPERIENCE ================= */
+        <>
+          {/* AUTHENTICATION BAR */}
+          <div style={styles.authBar}>
+            <div style={styles.userProfile}>
+              <span style={styles.userText}>Logged in as: <strong>{user.email}</strong></span>
+              <button onClick={handleLogout} style={styles.logoutButton}>Sign Out</button>
             </div>
-          ))
-        ) : (
-          <p>No reports available yet.</p>
-        )}
-      </div>
-
-      {/* GEMINI COPILOT FLOATING ACTION BUTTON */}
-      <button
-        onClick={() => setIsChatOpen(!isChatOpen)}
-        style={{
-          ...styles.floatingButton,
-          ...(isChatOpen ? styles.floatingButtonActive : {})
-        }}
-        title="Open Gemini Copilot"
-      >
-        ✨ Open Gemini Copilot
-      </button>
-
-      {/* CHAT DRAWER */}
-      {isChatOpen && (
-        <div style={styles.chatDrawer}>
-          <div style={styles.chatHeader}>
-            <h2 style={styles.chatTitle}>✨ Gemini Market Copilot</h2>
-            <button
-              onClick={() => setIsChatOpen(false)}
-              style={styles.closeButton}
-            >
-              ✕
-            </button>
           </div>
 
-          {/* MESSAGES CONTAINER */}
-          <div style={styles.messagesContainer}>
-            {messages.length === 0 ? (
-              <div style={styles.emptyState}>
-                <p>Ask me about Nigerian markets, business opportunities, or real estate insights!</p>
-              </div>
-            ) : (
-              messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    ...styles.message,
-                    ...(msg.role === 'user' ? styles.userMessage : styles.aiMessage)
-                  }}
-                >
-                  {msg.text}
+          <h1 style={styles.title}>Intelligence Directory</h1>
+          
+          <div style={styles.listContainer}>
+            {reports && reports.length > 0 ? (
+              reports.map((report) => (
+                <div key={report.id} style={styles.reportCard}>
+                  <h2 style={styles.reportTitle}>{report.location_name || report.location}</h2>
+                  {report.year && <p style={styles.reportMeta}>Year: {report.year}</p>}
+                  
+                  <Link href={`/intelligence/${report.slug}`}>
+                    <button style={styles.button}>Read Free Sample</button>
+                  </Link>
                 </div>
               ))
-            )}
-            {loading && (
-              <div style={styles.loadingMessage}>
-                <span style={styles.spinner}>...</span>
-              </div>
+            ) : (
+              <p>No reports available yet.</p>
             )}
           </div>
 
-          {/* CHAT INPUT FORM */}
-          <form onSubmit={handleChatSubmit} style={styles.chatForm}>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Ask about Nigerian business markets..."
-              style={styles.chatInput}
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              style={{...styles.sendButton, opacity: loading ? 0.6 : 1}}
-              disabled={loading}
-            >
-              Send
-            </button>
-          </form>
+          {/* GEMINI COPILOT FLOATING ACTION BUTTON */}
+          <button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            style={{
+              ...styles.floatingButton,
+              ...(isChatOpen ? styles.floatingButtonActive : {})
+            }}
+            title="Open Gemini Copilot"
+          >
+            ✨ Open Gemini Copilot
+          </button>
+
+          {/* CHAT DRAWER */}
+          {isChatOpen && (
+            <div style={styles.chatDrawer}>
+              <div style={styles.chatHeader}>
+                <h2 style={styles.chatTitle}>✨ Gemini Market Copilot</h2>
+                <button
+                  onClick={() => setIsChatOpen(false)}
+                  style={styles.closeButton}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* MESSAGES CONTAINER */}
+              <div style={styles.messagesContainer}>
+                {messages.length === 0 ? (
+                  <div style={styles.emptyState}>
+                    <p>Ask me about Nigerian markets, business opportunities, or real estate insights!</p>
+                  </div>
+                ) : (
+                  messages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        ...styles.message,
+                        ...(msg.role === 'user' ? styles.userMessage : styles.aiMessage)
+                      }}
+                    >
+                      {msg.text}
+                    </div>
+                  ))
+                )}
+                {loading && (
+                  <div style={styles.loadingMessage}>
+                    <span style={styles.spinner}>...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* CHAT INPUT FORM */}
+              <form onSubmit={handleChatSubmit} style={styles.chatForm}>
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Ask about Nigerian business markets..."
+                  style={styles.chatInput}
+                  disabled={loading}
+                />
+                <button
+                  type="submit"
+                  style={{...styles.sendButton, opacity: loading ? 0.6 : 1}}
+                  disabled={loading}
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
+        </>
+      ) : (
+        /* ================= UNAUTHENTICATED CREDENTIALS APP INTERFACE ================= */
+        <div style={styles.authCardContainer}>
+          <div style={styles.authCard}>
+            <h2 style={styles.authCardTitle}>{isSignUp ? 'Create Premium Account' : 'Sign In to Hub'}</h2>
+            <p style={styles.authCardSubtitle}>Access premium African frontier market intelligence resources</p>
+            
+            {authError && <div style={styles.errorBanner}>{authError}</div>}
+            
+            <form onSubmit={handleAuthSubmit} style={styles.form}>
+              {isSignUp && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    style={styles.input}
+                    required
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone Number"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    style={styles.input}
+                    required
+                  />
+                </>
+              )}
+              
+              <input
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={styles.input}
+                required
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={styles.input}
+                required
+              />
+              
+              <button type="submit" style={styles.submitFormButton}>
+                {isSignUp ? 'Register Terminal Access' : 'Authorize Login'}
+              </button>
+            </form>
+            
+            <p style={styles.toggleAuthText}>
+              {isSignUp ? 'Already have structural credentials?' : "Don't have terminal access key?"}{' '}
+              <span onClick={() => setIsSignUp(!isSignUp)} style={styles.toggleAuthLink}>
+                {isSignUp ? 'Log In' : 'Sign Up'}
+              </span>
+            </p>
+          </div>
         </div>
       )}
     </div>
@@ -225,7 +308,6 @@ const styles = {
   reportMeta: { fontSize: '14px', color: '#666', marginBottom: '15px' },
   button: { padding: '10px 20px', backgroundColor: '#0066cc', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '500', cursor: 'pointer' },
   
-  // NEW STYLES FOR THE AUTHENTICATION BUTTON GENERATORS
   authBar: {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -235,17 +317,6 @@ const styles = {
   },
   userProfile: { display: 'flex', alignItems: 'center', gap: '15px' },
   userText: { fontSize: '14px', color: '#444' },
-  loginButton: {
-    padding: '8px 16px',
-    backgroundColor: '#fff',
-    color: '#333',
-    border: '1px solid #ccc',
-    borderRadius: '6px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-  },
   logoutButton: {
     padding: '6px 12px',
     backgroundColor: '#ff4a4a',
@@ -256,6 +327,18 @@ const styles = {
     fontWeight: '500',
     cursor: 'pointer',
   },
+
+  // NEW DEDICATED SIGNUP/LOGIN STYLING FOR TERMINAL CARD
+  authCardContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '65vh' },
+  authCard: { width: '100%', maxWidth: '400px', padding: '35px 30px', borderRadius: '12px', border: '1px solid #eaeaea', boxShadow: '0 8px 30px rgba(0,0,0,0.06)', backgroundColor: '#fff', textAlign: 'center' },
+  authCardTitle: { fontSize: '22px', fontWeight: '700', color: '#1a1a1a', marginBottom: '8px', letterSpacing: '-0.5px' },
+  authCardSubtitle: { fontSize: '13px', color: '#666', marginBottom: '24px', lineHeight: '1.45' },
+  form: { display: 'flex', flexDirection: 'column', gap: '12px' },
+  input: { padding: '12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px', fontFamily: 'inherit', outline: 'none' },
+  submitFormButton: { padding: '12px', backgroundColor: '#1a1a1a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', marginTop: '6px', transition: 'background-color 0.2s' },
+  errorBanner: { padding: '10px 12px', backgroundColor: '#fff0f0', color: '#d93838', borderRadius: '6px', fontSize: '13px', marginBottom: '16px', textAlign: 'left', border: '1px solid #ffe0e0', lineHeight: '1.4' },
+  toggleAuthText: { fontSize: '13.5px', color: '#555', marginTop: '20px' },
+  toggleAuthLink: { color: '#0066cc', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' },
 
   // GEMINI COPILOT STYLES
   floatingButton: {
@@ -336,7 +419,7 @@ const styles = {
     color: '#fff',
     alignSelf: 'flex-end',
     maxWidth: '80%',
-    textAlign: 'right',
+    textAlign: 'left',
   },
   aiMessage: {
     backgroundColor: '#f0f0f0',
@@ -389,7 +472,6 @@ const styles = {
     borderRadius: '6px',
     fontSize: '13px',
     fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'background-color 0.2s ease',
-  },
+    cursor: 'pointer'
+  }
 };
